@@ -794,7 +794,7 @@ export const CreateExamFaculty = api(
 	async (body: {
 		code: string
 		name: string
-		majorId?: number | null
+		majorId?: number
 		description?: string
 	}): Promise<{ data: FacultyResponse }> => {
 		const actor = await getActor()

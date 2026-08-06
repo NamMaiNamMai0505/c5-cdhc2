@@ -484,6 +484,13 @@
 			"when": 1786014000000,
 			"tag": "0069_restore_skipped_leave_schema",
 			"breakpoints": true
+		},
+		{
+			"idx": 69,
+			"version": "6",
+			"when": 1786015000000,
+			"tag": "0070_add_leave_user_columns",
+			"breakpoints": true
 		}
 	]
 }
