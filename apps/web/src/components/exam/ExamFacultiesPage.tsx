@@ -170,8 +170,8 @@ export default function ExamFacultiesPage() {
 				records.map((faculty) =>
 					UpdateExamFaculty(faculty.id, {
 						code: form.code,
-						name: form.name,
-						shortCode: form.shortCode || null
+						shortCode: form.shortCode || null,
+						name: form.name
 					})
 				)
 			)
@@ -208,8 +208,8 @@ export default function ExamFacultiesPage() {
 		mutationFn: () =>
 			CreateExamFaculty({
 				code: form.code.trim(),
-				name: form.name.trim(),
-				shortCode: form.shortCode.trim() || null
+				shortCode: form.shortCode.trim() || null,
+				name: form.name.trim()
 			}),
 		onSuccess: () => {
 			toast.success('Đã thêm khoa')
@@ -465,11 +465,6 @@ export default function ExamFacultiesPage() {
 											<Badge variant='outline'>
 												{faculty.code}
 											</Badge>
-											{faculty.shortCode && (
-												<Badge variant='secondary'>
-													{faculty.shortCode}
-												</Badge>
-											)}
 											{faculty.name}
 											{faculty.shortCode
 												? ` (${faculty.shortCode})`
@@ -547,9 +542,6 @@ export default function ExamFacultiesPage() {
 													setForm({
 														code: faculty.code,
 														name: faculty.name,
-														shortCode:
-															faculty.shortCode ||
-															'',
 														headUserId: faculty.head
 															? String(
 																	faculty.head
@@ -785,19 +777,6 @@ export default function ExamFacultiesPage() {
 							/>
 						</div>
 						<div>
-							<Label>Viết tắt khoa</Label>
-							<Input
-								value={form.shortCode}
-								onChange={(e) =>
-									setForm((o) => ({
-										...o,
-										shortCode: e.target.value.toUpperCase()
-									}))
-								}
-								placeholder='CNTT'
-							/>
-						</div>
-						<div>
 							<Label>Tên khoa *</Label>
 							<Input
 								value={form.name}
@@ -807,6 +786,19 @@ export default function ExamFacultiesPage() {
 										name: e.target.value
 									}))
 								}
+							/>
+						</div>
+						<div>
+							<Label>Viết tắt khoa</Label>
+							<Input
+								value={form.shortCode}
+								onChange={(e) =>
+									setForm((o) => ({
+										...o,
+										shortCode: e.target.value.toUpperCase()
+									}))
+								}
+								placeholder='VD: CNTT'
 							/>
 						</div>
 					</div>
