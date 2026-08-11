@@ -8,6 +8,7 @@ import {
 	ListExamFaculties,
 	ListExamFacultyHeads,
 	ListExamFacultyOptions,
+	ListExamMajors,
 	ListExamSubjects,
 	ListExamTeacherCatalog,
 	UpdateExamFaculty,
@@ -75,7 +76,13 @@ export default function ExamFacultiesPage() {
 	const [editingSubjectId, setEditingSubjectId] = useState<number | null>(
 		null
 	)
-	const [form, setForm] = useState({ code: '', name: '', headUserId: 'none' })
+	const [form, setForm] = useState({
+		code: '',
+		name: '',
+		shortCode: '',
+		majorId: '',
+		headUserId: 'none'
+	})
 	const [subjectForm, setSubjectForm] = useState({
 		baseCode: '',
 		name: '',
@@ -90,6 +97,10 @@ export default function ExamFacultiesPage() {
 	const facultiesQ = useQuery({
 		queryKey: ['exam-faculties'],
 		queryFn: () => ListExamFaculties()
+	})
+	const majorsQ = useQuery({
+		queryKey: ['exam-majors'],
+		queryFn: ListExamMajors
 	})
 	const subjectsQ = useQuery({
 		queryKey: ['exam-subjects'],
@@ -145,7 +156,9 @@ export default function ExamFacultiesPage() {
 				records.map((faculty) =>
 					UpdateExamFaculty(faculty.id, {
 						code: form.code,
-						name: form.name
+						name: form.name,
+						shortCode: form.shortCode || null,
+						majorId: faculty.majorId
 					})
 				)
 			)
@@ -182,7 +195,9 @@ export default function ExamFacultiesPage() {
 		mutationFn: () =>
 			CreateExamFaculty({
 				code: form.code.trim(),
-				name: form.name.trim()
+				name: form.name.trim(),
+				shortCode: form.shortCode.trim() || null,
+				majorId: Number(form.majorId)
 			}),
 		onSuccess: () => {
 			toast.success('Đã thêm khoa')
@@ -300,7 +315,13 @@ export default function ExamFacultiesPage() {
 					<Button
 						onClick={() => {
 							setFacultyEditorMode('create')
-							setForm({ code: '', name: '', headUserId: 'none' })
+							setForm({
+								code: '',
+								name: '',
+								shortCode: '',
+								majorId: '',
+								headUserId: 'none'
+							})
 							setFacultyEditorOpen(true)
 						}}
 					>
@@ -328,6 +349,11 @@ export default function ExamFacultiesPage() {
 											<Badge variant='outline'>
 												{faculty.code}
 											</Badge>
+											{faculty.shortCode && (
+												<Badge variant='secondary'>
+													{faculty.shortCode}
+												</Badge>
+											)}
 											{faculty.name}
 										</CardTitle>
 										<CardDescription className='mt-1'>
@@ -346,6 +372,14 @@ export default function ExamFacultiesPage() {
 													setForm({
 														code: faculty.code,
 														name: faculty.name,
+														shortCode:
+															faculty.shortCode ||
+															'',
+														majorId: faculty.majorId
+															? String(
+																	faculty.majorId
+																)
+															: '',
 														headUserId: faculty.head
 															? String(
 																	faculty.head
@@ -399,6 +433,14 @@ export default function ExamFacultiesPage() {
 													setForm({
 														code: faculty.code,
 														name: faculty.name,
+														shortCode:
+															faculty.shortCode ||
+															'',
+														majorId: faculty.majorId
+															? String(
+																	faculty.majorId
+																)
+															: '',
 														headUserId: faculty.head
 															? String(
 																	faculty.head
@@ -620,6 +662,31 @@ export default function ExamFacultiesPage() {
 						</DialogTitle>
 					</DialogHeader>
 					<div className='space-y-3'>
+						{facultyEditorMode === 'create' && (
+							<div>
+								<Label>Ngành *</Label>
+								<Select
+									value={form.majorId}
+									onValueChange={(majorId) =>
+										setForm((o) => ({ ...o, majorId }))
+									}
+								>
+									<SelectTrigger>
+										<SelectValue placeholder='Chọn ngành' />
+									</SelectTrigger>
+									<SelectContent>
+										{(majorsQ.data || []).map((major) => (
+											<SelectItem
+												key={major.id}
+												value={String(major.id)}
+											>
+												{major.code} — {major.name}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							</div>
+						)}
 						<div>
 							<Label>Mã khoa *</Label>
 							<Input
@@ -631,6 +698,19 @@ export default function ExamFacultiesPage() {
 									}))
 								}
 								placeholder='K1'
+							/>
+						</div>
+						<div>
+							<Label>Viết tắt khoa</Label>
+							<Input
+								value={form.shortCode}
+								onChange={(e) =>
+									setForm((o) => ({
+										...o,
+										shortCode: e.target.value.toUpperCase()
+									}))
+								}
+								placeholder='CNTT'
 							/>
 						</div>
 						<div>
@@ -657,6 +737,8 @@ export default function ExamFacultiesPage() {
 							disabled={
 								!form.code.trim() ||
 								!form.name.trim() ||
+								(facultyEditorMode === 'create' &&
+									!form.majorId) ||
 								createFaculty.isPending ||
 								save.isPending
 							}
