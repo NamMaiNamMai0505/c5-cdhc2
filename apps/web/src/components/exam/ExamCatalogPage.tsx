@@ -103,7 +103,9 @@ export default function ExamCatalogPage() {
 	const [facultyForm, setFacultyForm] = useState({
 		code: '',
 		shortCode: '',
-		name: ''
+		name: '',
+		majorId: 0,
+		majorLabel: ''
 	})
 	const [subjectForm, setSubjectForm] = useState({
 		baseCode: '',
@@ -158,18 +160,13 @@ export default function ExamCatalogPage() {
 		for (const major of majors) {
 			m.set(
 				major.id,
-				faculties.filter((f) =>
-					subjects.some(
-						(s) =>
-							s.facultyId === f.id &&
-							(s.majorId === major.id ||
-								(s.majorIds || []).includes(major.id))
-					)
+				faculties.filter(
+					(f) => f.majorId === major.id || f.majorId == null
 				)
 			)
 		}
 		return m
-	}, [faculties, majors, subjects])
+	}, [faculties, majors])
 
 	const subjectsByFaculty = useMemo(() => {
 		const m = new Map<number, ExamSubject[]>()
@@ -200,6 +197,7 @@ export default function ExamCatalogPage() {
 			{
 				code: string
 				name: string
+				majorNames: Set<string>
 				subjects: ExamSubject[]
 			}
 		>()
@@ -208,14 +206,19 @@ export default function ExamCatalogPage() {
 			const current = grouped.get(code) || {
 				code,
 				name: faculty.name,
+				majorNames: new Set<string>(),
 				subjects: []
 			}
+			if (faculty.majorName) current.majorNames.add(faculty.majorName)
 			current.subjects.push(...(subjectsByFaculty.get(faculty.id) || []))
 			grouped.set(code, current)
 		}
 		return [...grouped.values()]
 			.map((faculty) => ({
 				...faculty,
+				majorNames: [...faculty.majorNames].sort((a, b) =>
+					a.localeCompare(b, 'vi')
+				),
 				subjects: faculty.subjects.sort((a, b) =>
 					a.name.localeCompare(b.name, 'vi')
 				)
@@ -346,7 +349,8 @@ export default function ExamCatalogPage() {
 						UpdateExamFaculty(faculty.id, {
 							code: facultyForm.code,
 							shortCode: facultyForm.shortCode,
-							name: facultyForm.name
+							name: facultyForm.name,
+							majorId: facultyForm.majorId || null
 						})
 					)
 				)
@@ -356,7 +360,8 @@ export default function ExamCatalogPage() {
 					await UpdateExamFaculty(editFacultyId, {
 						code: facultyForm.code,
 						shortCode: facultyForm.shortCode,
-						name: facultyForm.name
+						name: facultyForm.name,
+						majorId: facultyForm.majorId
 					})
 				]
 			}
@@ -364,7 +369,8 @@ export default function ExamCatalogPage() {
 				await CreateExamFaculty({
 					code: facultyForm.code,
 					shortCode: facultyForm.shortCode,
-					name: facultyForm.name
+					name: facultyForm.name,
+					majorId: facultyForm.majorId
 				})
 			]
 		},
@@ -489,7 +495,9 @@ export default function ExamCatalogPage() {
 		setFacultyForm({
 			code: '',
 			shortCode: '',
-			name: ''
+			name: '',
+			majorId: major.id,
+			majorLabel: `${major.code} — ${major.name}`
 		})
 		setFacultyOpen(true)
 	}
@@ -499,7 +507,9 @@ export default function ExamCatalogPage() {
 		setFacultyForm({
 			code: fac.code,
 			shortCode: fac.shortCode || '',
-			name: fac.name
+			name: fac.name,
+			majorId: fac.majorId ?? major?.id ?? 0,
+			majorLabel: fac.majorName || major?.name || 'Ngành chưa xác định'
 		})
 		setFacultyOpen(true)
 	}
@@ -509,7 +519,9 @@ export default function ExamCatalogPage() {
 		setFacultyForm({
 			code,
 			shortCode: '',
-			name
+			name,
+			majorId: 0,
+			majorLabel: 'Khoa dùng chung cũ'
 		})
 		setFacultyOpen(true)
 	}
@@ -626,6 +638,10 @@ export default function ExamCatalogPage() {
 										<Badge variant='secondary'>
 											{faculty.subjects.length} môn
 										</Badge>
+										<span className='text-muted-foreground ml-auto text-xs'>
+											Phụ trách{' '}
+											{faculty.majorNames.length} ngành
+										</span>
 										{canManage && (
 											<Button
 												type='button'
@@ -1465,6 +1481,12 @@ export default function ExamCatalogPage() {
 						</DialogTitle>
 					</DialogHeader>
 					<div className='space-y-3'>
+						<div>
+							<Label>Ngành</Label>
+							<div className='bg-muted rounded border px-3 py-2 text-sm'>
+								{facultyForm.majorLabel}
+							</div>
+						</div>
 						<div>
 							<Label>Mã khoa *</Label>
 							<Input
