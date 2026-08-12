@@ -1,5 +1,13 @@
 import * as XLSX from 'xlsx'
 
+function importKey(value: unknown) {
+	return String(value || '')
+		.normalize('NFD')
+		.replace(/[\u0300-\u036f]/g, '')
+		.toLowerCase()
+		.replace(/[^a-z0-9]/g, '')
+}
+
 function matrixToRows(matrix: unknown[][]): Record<string, unknown>[] {
 	const headers = (matrix[0] || []).map((value) => String(value ?? '').trim())
 	if (!headers.some(Boolean)) throw new Error('Không tìm thấy dòng tiêu đề')
@@ -26,6 +34,7 @@ function xmlText(value: string) {
 		.replace(/&lt;/g, '<')
 		.replace(/&gt;/g, '>')
 		.replace(/&quot;/g, '"')
+		.replace(/&apos;/g, "'")
 		.trim()
 }
 
@@ -62,7 +71,22 @@ async function parseDocx(file: File): Promise<Record<string, unknown>[]> {
 			'Không tìm thấy bảng trong Word. Hãy đặt dữ liệu trong bảng Word.'
 		)
 	}
-	const best = tables.sort((a, b) => b.length - a.length)[0]!
+	const headerScore = (row: string[]) => {
+		const header = row.map(importKey)
+		let score = 0
+		if (header.some((cell) => ['mamon', 'mamonhoc'].includes(cell)))
+			score += 3
+		if (header.some((cell) => ['tenmon', 'tenmonhoc'].includes(cell)))
+			score += 3
+		if (header.some((cell) => ['makhoa', 'manganh'].includes(cell)))
+			score += 1
+		return score
+	}
+	const best = tables.sort(
+		(a, b) =>
+			headerScore(b[0] || []) - headerScore(a[0] || []) ||
+			b.length - a.length
+	)[0]!
 	return matrixToRows(best)
 }
 
@@ -78,9 +102,18 @@ export async function parseCatalogImportFile(
 	}
 	if (name.endsWith('.docx')) return parseDocx(file)
 	const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' })
-	const sheet =
-		(sheetName ? workbook.Sheets[sheetName] : undefined) ||
-		workbook.Sheets[workbook.SheetNames[0] || '']
+	const preferredSheets = sheetName
+		? [sheetName, sheetName === 'MonHoc' ? 'Dữ liệu môn học' : ''].filter(
+				Boolean
+			)
+		: []
+	const selectedName =
+		preferredSheets.find((name) => workbook.Sheets[name]) ||
+		workbook.SheetNames.find((name) =>
+			importKey(name).includes('dulieumonhoc')
+		) ||
+		workbook.SheetNames[0]
+	const sheet = selectedName ? workbook.Sheets[selectedName] : undefined
 	if (!sheet) throw new Error('File không có sheet dữ liệu')
 	return matrixToRows(
 		XLSX.utils.sheet_to_json(sheet, {

@@ -90,6 +90,7 @@ export interface ExamClassCatalog {
 	majorId: number | null
 	majorCode?: string | null
 	majorName?: string | null
+	nationalMajorCode?: string | null
 	facultyId: number | null
 	facultyCode?: string | null
 	facultyName?: string | null
@@ -111,6 +112,7 @@ export interface ExamSubject {
 	code: string
 	/** Gốc file: M009K2 */
 	baseCode?: string | null
+	shortCode?: string | null
 	name: string
 	creditHours: number | null
 	lessonHours: number | null
@@ -599,6 +601,7 @@ export async function CreateExamSubject(body: {
 	majorId?: number
 	sourceSubjectId?: number
 	baseCode?: string
+	shortCode?: string
 	code?: string
 	creditHours?: number
 	lessonHours?: number
@@ -617,6 +620,7 @@ export async function UpdateExamSubject(
 		name?: string
 		facultyId?: number
 		baseCode?: string
+		shortCode?: string
 		code?: string
 		creditHours?: number
 		lessonHours?: number

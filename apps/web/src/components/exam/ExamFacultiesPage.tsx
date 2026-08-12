@@ -8,6 +8,8 @@ import {
 	ListExamFaculties,
 	ListExamFacultyHeads,
 	ListExamFacultyOptions,
+	ListExamMajors,
+	ListExamSystems,
 	ListExamSubjects,
 	ListExamTeacherCatalog,
 	UpdateExamFaculty,
@@ -92,6 +94,7 @@ export default function ExamFacultiesPage() {
 	const [managingCode, setManagingCode] = useState<string | null>(null)
 	const [subjectEditorOpen, setSubjectEditorOpen] = useState(false)
 	const [facultyImportBusy, setFacultyImportBusy] = useState(false)
+	const [subjectImportBusy, setSubjectImportBusy] = useState(false)
 	const [editingSubjectId, setEditingSubjectId] = useState<number | null>(
 		null
 	)
@@ -119,6 +122,14 @@ export default function ExamFacultiesPage() {
 	const subjectsQ = useQuery({
 		queryKey: ['exam-subjects'],
 		queryFn: () => ListExamSubjects()
+	})
+	const majorsQ = useQuery({
+		queryKey: ['exam-majors'],
+		queryFn: () => ListExamMajors()
+	})
+	const systemsQ = useQuery({
+		queryKey: ['exam-systems'],
+		queryFn: () => ListExamSystems()
 	})
 	const teachersQ = useQuery({
 		queryKey: ['exam-teacher-catalog'],
@@ -306,6 +317,126 @@ export default function ExamFacultiesPage() {
 			toast.error((error as Error).message)
 		} finally {
 			setFacultyImportBusy(false)
+		}
+	}
+
+	async function importSubjectsForFaculty(file: File, facultyCode: string) {
+		setSubjectImportBusy(true)
+		try {
+			const rows = await parseCatalogImportFile(file, 'MonHoc')
+			if (!rows.length) throw new Error('File không có dữ liệu môn học')
+			const majors = majorsQ.data || []
+			const systems = systemsQ.data || []
+			const faculty = (facultiesQ.data || []).find(
+				(item) => item.code.toUpperCase() === facultyCode.toUpperCase()
+			)
+			if (!faculty) throw new Error(`Không tìm thấy khoa ${facultyCode}`)
+			let saved = 0
+			const errors: string[] = []
+			for (let index = 0; index < rows.length; index++) {
+				const row = rows[index]!
+				const rowFaculty = importValue(row, [
+					'mã khoa',
+					'ma khoa',
+					'faculty code',
+					'faculty'
+				]).toUpperCase()
+				if (rowFaculty && rowFaculty !== facultyCode.toUpperCase())
+					continue
+				const code = importValue(row, [
+					'mã môn học',
+					'mã môn',
+					'ma mon hoc',
+					'code'
+				]).toUpperCase()
+				const name = importValue(row, [
+					'tên môn học',
+					'ten mon hoc',
+					'tên môn',
+					'ten mon',
+					'name'
+				])
+				const majorRaw = importValue(row, [
+					'mã ngành',
+					'ma nganh',
+					'major code',
+					'major'
+				])
+				const systemRaw = importValue(row, [
+					'mã hệ',
+					'ma he',
+					'system code',
+					'system'
+				])
+				const system = systems.find((item) =>
+					[item.code, item.letter].some(
+						(value) =>
+							(value || '').trim().toLowerCase() ===
+							systemRaw.toLowerCase()
+					)
+				)
+				const candidates = majors.filter((item) =>
+					[
+						item.catalogNumber,
+						item.nationalMajorCode,
+						item.code,
+						item.name
+					].some(
+						(value) =>
+							(value || '').trim().toLowerCase() ===
+							majorRaw.toLowerCase()
+					)
+				)
+				const major =
+					candidates.find(
+						(item) => !system || item.systemId === system.id
+					) || candidates[0]
+				if (!code || !name || !major) {
+					errors.push(
+						`Dòng ${index + 2}: thiếu mã môn, tên môn hoặc ngành`
+					)
+					continue
+				}
+				try {
+					await CreateExamSubject({
+						code,
+						baseCode: code,
+						shortCode:
+							importValue(row, [
+								'viết tắt',
+								'viet tat',
+								'short code'
+							]) || undefined,
+						name,
+						facultyId: faculty.id,
+						majorId: major.id,
+						creditHours:
+							Number(
+								importValue(row, ['số tín chỉ', 'so tin chi'])
+							) || 0,
+						lessonHours:
+							Number(
+								importValue(row, [
+									'tổng số tiết',
+									'tong so tiet',
+									'số tiết'
+								])
+							) || 0
+					})
+					saved++
+				} catch (error) {
+					errors.push(
+						`Dòng ${index + 2}: ${(error as Error).message}`
+					)
+				}
+			}
+			toast.success(`Đã import ${saved} môn cho ${facultyCode}`)
+			if (errors.length) toast.error(errors.slice(0, 5).join('\n'))
+			void qc.invalidateQueries({ queryKey: ['exam-subjects'] })
+		} catch (error) {
+			toast.error((error as Error).message)
+		} finally {
+			setSubjectImportBusy(false)
 		}
 	}
 
@@ -651,23 +782,49 @@ export default function ExamFacultiesPage() {
 							{managedSubjects.length} môn học thuộc khoa
 						</p>
 						{canManage && (
-							<Button size='sm' onClick={openCreateSubject}>
-								<Plus className='mr-2 h-4 w-4' /> Thêm môn học
-							</Button>
+							<div className='flex gap-2'>
+								<label className='cursor-pointer'>
+									<input
+										className='hidden'
+										type='file'
+										accept='.xlsx,.xls,.docx'
+										disabled={subjectImportBusy}
+										onChange={(event) => {
+											const file = event.target.files?.[0]
+											if (file && managingCode)
+												void importSubjectsForFaculty(
+													file,
+													managingCode
+												)
+											event.currentTarget.value = ''
+										}}
+									/>
+									<Button size='sm' variant='outline' asChild>
+										<span>
+											<Upload className='mr-2 h-4 w-4' />{' '}
+											Import môn
+										</span>
+									</Button>
+								</label>
+								<Button size='sm' onClick={openCreateSubject}>
+									<Plus className='mr-2 h-4 w-4' /> Thêm môn
+									học
+								</Button>
+							</div>
 						)}
 					</div>
 					<div className='overflow-x-auto rounded-md border'>
 						<Table>
 							<TableHeader>
 								<TableRow>
-									<TableHead>Mã môn</TableHead>
-									<TableHead>Tên môn</TableHead>
-									<TableHead>Ngành đào tạo</TableHead>
+									<TableHead>Mã môn học</TableHead>
+									<TableHead>Tên môn học</TableHead>
+									<TableHead>Viết tắt</TableHead>
 									<TableHead className='text-center'>
-										Tín chỉ
+										Số tín chỉ
 									</TableHead>
 									<TableHead className='text-center'>
-										Số tiết
+										Tổng số tiết
 									</TableHead>
 									{canManage && (
 										<TableHead className='text-right'>
@@ -693,12 +850,7 @@ export default function ExamFacultiesPage() {
 											{subject.name}
 										</TableCell>
 										<TableCell>
-											<div>
-												{subject.majorName || '—'}
-											</div>
-											<div className='text-muted-foreground text-xs'>
-												{subject.majorCode || ''}
-											</div>
+											{subject.shortCode || '—'}
 										</TableCell>
 										<TableCell className='text-center'>
 											{subject.creditHours ?? 0}

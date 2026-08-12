@@ -212,6 +212,11 @@ export function canViewTeachingAssignments(): boolean {
 	)
 }
 
+/** Danh mục giáo viên là quyền riêng, không dùng chung quyền phân công. */
+export function canViewTeacherCatalog(): boolean {
+	return isSuperAdmin() || hasExamPermission('exam-teachers')
+}
+
 export function canManageTeachingAssignments(): boolean {
 	if (isExamBgh() && !isSuperAdmin()) return false
 	return (
@@ -300,11 +305,8 @@ export function examNavAllowed(key: ExamNavKey): boolean {
 				hasExamPermission('exam-faculties')
 			)
 		case 'teachers':
-			// Danh mục GV theo khoa — CNK/admin/BGH/KT (như phân công)
-			return (
-				canViewTeachingAssignments() ||
-				hasExamPermission('exam-teachers')
-			)
+			// Danh mục GV dùng quyền riêng, không dùng quyền phân công.
+			return canViewTeacherCatalog()
 		case 'assign':
 			// Khoa + admin + BGH (xem) + Ban KT xem
 			return canViewTeachingAssignments()

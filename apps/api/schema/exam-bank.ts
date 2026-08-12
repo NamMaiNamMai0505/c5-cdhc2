@@ -142,6 +142,7 @@ export const examSubjects = sqliteTable('exam_subjects', {
 	code: text('code').notNull().unique(),
 	/** Mã gốc trong khung (M009K2) */
 	baseCode: text('base_code'),
+	shortCode: text('short_code'),
 	name: text('name').notNull(),
 	creditHours: int('credit_hours').default(0),
 	lessonHours: int('lesson_hours').default(0),

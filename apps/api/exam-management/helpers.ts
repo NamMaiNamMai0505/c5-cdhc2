@@ -494,6 +494,11 @@ export function canManageTeachingAssignments(actor: Actor) {
 	)
 }
 
+/** Danh mục giáo viên là quyền riêng, không suy ra từ quyền phân công. */
+export function canViewTeacherCatalog(actor: Actor) {
+	return actor.isSuperAdmin || hasPerm(actor, 'exam-teachers:read')
+}
+
 /** Danh mục ngành/môn: super + CNK (quản môn ngành) + Ban KT xem/vận hành */
 export function canManageCatalogApi(actor: Actor): boolean {
 	if (actor.isSuperAdmin || isNganhOperator(actor)) return true
