@@ -672,6 +672,7 @@ export async function ListExamAssignments(params?: {
 
 export async function CreateExamAssignment(body: {
 	subjectId: number
+	majorId: number
 	userId: number
 	/** Bắt buộc — phân công theo lớp */
 	classId: number
@@ -695,6 +696,7 @@ export async function UpdateExamAssignment(
 	id: number,
 	body: {
 		subjectId?: number
+		majorId: number
 		userId?: number
 		classId?: number
 		teachingStart?: string | null
