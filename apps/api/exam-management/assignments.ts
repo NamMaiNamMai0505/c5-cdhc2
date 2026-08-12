@@ -27,12 +27,15 @@ import { roles } from '../schema/roles'
 import {
 	canDeptHeadAccessSubject,
 	canManageTeachingAssignments,
+	canViewTeacherCatalog,
 	canViewTeachingAssignments,
 	getActor,
 	getDeptHeadFacultyCodes,
 	getDeptHeadMajorIds,
 	getTeachingPeriodStatus,
 	isClassCohortExpired,
+	isBgh,
+	isExamOffice,
 	isLecturer,
 	isScopedDeptHead,
 	isTeachingPeriodInactive,
@@ -331,10 +334,17 @@ export const ListExamAssignments = api(
 		q?: Query<string>
 	}): Promise<{ data: AssignmentRow[] }> => {
 		const actor = await getActor()
+		// Giáo viên thuần chỉ được xem phân công của chính mình. Không được
+		// nới điều kiện này chỉ vì tài khoản có quyền đọc danh sách; quyền đọc
+		// là quyền vào màn hình, không phải quyền xem dữ liệu của giáo viên khác.
+		const lecturerOwnOnly =
+			isLecturer(actor) &&
+			!canManageTeachingAssignments(actor) &&
+			!isScopedDeptHead(actor) &&
+			!isExamOffice(actor) &&
+			!isBgh(actor)
 		const wantMine =
-			q.mine === true ||
-			String(q.mine) === 'true' ||
-			(!canViewTeachingAssignments(actor) && isLecturer(actor))
+			q.mine === true || String(q.mine) === 'true' || lecturerOwnOnly
 
 		if (!canViewTeachingAssignments(actor) && !wantMine) {
 			throw APIError.permissionDenied('Không có quyền xem phân công môn')
@@ -349,7 +359,10 @@ export const ListExamAssignments = api(
 		}
 
 		const conditions = []
-		if (wantMine && !canManageTeachingAssignments(actor)) {
+		if (
+			(wantMine || lecturerOwnOnly) &&
+			!canManageTeachingAssignments(actor)
+		) {
 			// GV / BGH xem «mine» → khóa userId
 			conditions.push(eq(examTeachingAssignments.userId, actor.userId))
 		} else if (q.userId) {
@@ -1343,7 +1356,7 @@ export const ListExamAcademicTitles = api(
 	{ auth: true, expose: true, method: 'GET', path: '/exam/academic-titles' },
 	async (): Promise<{ data: AcademicTitleRow[] }> => {
 		const actor = await getActor()
-		if (!canViewTeachingAssignments(actor)) {
+		if (!canViewTeacherCatalog(actor)) {
 			throw APIError.permissionDenied(
 				'Không có quyền xem danh mục chức danh'
 			)
@@ -1474,7 +1487,7 @@ export const ListExamFacultyOptions = api(
 	},
 	async (): Promise<{ data: FacultyOption[] }> => {
 		const actor = await getActor()
-		if (!canViewTeachingAssignments(actor)) {
+		if (!canViewTeacherCatalog(actor)) {
 			throw APIError.permissionDenied('Không có quyền')
 		}
 		const rows = await orm
@@ -1726,7 +1739,7 @@ export const ListExamTeacherCatalog = api(
 		q?: Query<string>
 	}): Promise<{ data: TeacherCatalogRow[] }> => {
 		const actor = await getActor()
-		if (!canViewTeachingAssignments(actor)) {
+		if (!canViewTeacherCatalog(actor)) {
 			throw APIError.permissionDenied('Không có quyền xem danh mục GV')
 		}
 
@@ -2155,7 +2168,7 @@ export const ListExamTeachers = api(
 		>
 	}> => {
 		const actor = await getActor()
-		if (!canViewTeachingAssignments(actor)) {
+		if (!canViewTeacherCatalog(actor)) {
 			throw APIError.permissionDenied('Không có quyền')
 		}
 

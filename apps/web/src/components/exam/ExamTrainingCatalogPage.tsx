@@ -1,5 +1,6 @@
 import {
 	CreateExamMajor,
+	CreateExamFaculty,
 	CreateExamSubject,
 	CreateExamSystem,
 	DeleteExamMajor,
@@ -409,25 +410,67 @@ export default function ExamTrainingCatalogPage() {
 		try {
 			const rows = await parseCatalogImportFile(file, 'MonHoc')
 			if (!rows.length) throw new Error('File không có dòng dữ liệu')
+			const firstRow = rows[0]!
+			const hasSubjectColumns =
+				importValue(firstRow, [
+					'mã môn học',
+					'mã môn',
+					'ma mon',
+					'code'
+				]) &&
+				importValue(firstRow, [
+					'tên môn học',
+					'tên môn',
+					'ten mon',
+					'name'
+				])
+			if (!hasSubjectColumns) {
+				throw new Error(
+					'Không nhận diện được bảng môn học. Cần các cột Mã môn học và Tên môn học.'
+				)
+			}
 
 			const known = [...subjects]
+			const facultyByCode = new Map(
+				faculties.map((item) => [item.code.trim().toUpperCase(), item])
+			)
 			let created = 0
 			const errors: string[] = []
 			for (let index = 0; index < rows.length; index++) {
 				const row = rows[index]!
 				const baseCode = importValue(row, [
+					'mã môn học',
 					'ma mon',
 					'mã môn',
 					'ma goc',
 					'code',
 					'base code'
 				])
-				const name = importValue(row, ['ten mon', 'tên môn', 'name'])
+				const shortCode = importValue(row, [
+					'viết tắt',
+					'viet tat',
+					'short code',
+					'abbreviation'
+				])
+				const name = importValue(row, [
+					'tên môn học',
+					'ten mon hoc',
+					'ten mon',
+					'tên môn',
+					'name'
+				])
 				const facultyRaw = importValue(row, [
 					'ma khoa',
 					'khoa',
 					'faculty code',
 					'faculty'
+				])
+				const systemRaw = importValue(row, [
+					'mã hệ',
+					'ma he',
+					'system code',
+					'system',
+					'hệ'
 				])
 				const majorRaw = importValue(row, [
 					'ma nganh',
@@ -438,13 +481,14 @@ export default function ExamTrainingCatalogPage() {
 					'major code',
 					'major'
 				])
-				const faculty = faculties.find(
-					(item) =>
-						item.code.toUpperCase() === facultyRaw.toUpperCase() ||
-						item.name.trim().toLowerCase() ===
-							facultyRaw.toLowerCase()
+				const system = systems.find((item) =>
+					[item.code, item.letter].some(
+						(value) =>
+							(value || '').trim().toLowerCase() ===
+							systemRaw.toLowerCase()
+					)
 				)
-				const major = majors.find((item) =>
+				const majorCandidates = majors.filter((item) =>
 					[
 						item.catalogNumber,
 						item.nationalMajorCode,
@@ -456,13 +500,42 @@ export default function ExamTrainingCatalogPage() {
 							majorRaw.toLowerCase()
 					)
 				)
-				if (!baseCode || !name || !faculty || !major) {
+				const major =
+					majorCandidates.find(
+						(item) => !system || item.systemId === system.id
+					) || majorCandidates[0]
+				if (!baseCode || !name || !facultyRaw || !major) {
+					const missing = [
+						!baseCode && 'Mã môn học',
+						!name && 'Tên môn học',
+						!facultyRaw && 'Mã khoa',
+						!major && `Ngành ${majorRaw || '(trống)'}`
+					]
+						.filter(Boolean)
+						.join(', ')
 					errors.push(
-						`Dòng ${index + 2}: thiếu mã môn, tên, khoa hoặc ngành`
+						`Dòng ${index + 2}: thiếu/không khớp ${missing}`
 					)
 					continue
 				}
 				try {
+					let faculty = facultyByCode.get(facultyRaw.toUpperCase())
+					if (!faculty) {
+						faculty = faculties.find(
+							(item) =>
+								item.name.trim().toLowerCase() ===
+								facultyRaw.toLowerCase()
+						)
+					}
+					if (!faculty) {
+						const createdFaculty = await CreateExamFaculty({
+							code: facultyRaw.toUpperCase(),
+							name: facultyRaw.toUpperCase(),
+							majorId: major.id
+						})
+						faculty = createdFaculty
+						facultyByCode.set(faculty.code.toUpperCase(), faculty)
+					}
 					const creditHours = Number(
 						importValue(row, [
 							'so tin chi',
@@ -471,8 +544,13 @@ export default function ExamTrainingCatalogPage() {
 						]) || 0
 					)
 					const lessonHours = Number(
-						importValue(row, ['so tiet', 'tiết', 'lesson hours']) ||
-							0
+						importValue(row, [
+							'so tiet',
+							'tổng số tiết',
+							'tong so tiet',
+							'tiết',
+							'lesson hours'
+						]) || 0
 					)
 					const existing = known.find(
 						(item) =>
@@ -484,10 +562,14 @@ export default function ExamTrainingCatalogPage() {
 							item.facultyCode?.toUpperCase() ===
 								faculty.code.toUpperCase()
 					)
+					if (!faculty)
+						throw new Error(`Không tạo được khoa ${facultyRaw}`)
 					const result = await CreateExamSubject({
 						name,
 						facultyId: faculty.id,
+						code: baseCode.toUpperCase(),
 						baseCode: baseCode.toUpperCase(),
+						shortCode: shortCode || undefined,
 						creditHours: Number.isFinite(creditHours)
 							? creditHours
 							: 0,

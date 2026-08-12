@@ -533,6 +533,13 @@
 			"when": 1786105000000,
 			"tag": "0076_exam_faculties_standalone",
 			"breakpoints": true
+		},
+		{
+			"idx": 75,
+			"version": "7",
+			"when": 1786106000000,
+			"tag": "0077_exam_subject_short_code",
+			"breakpoints": true
 		}
 	]
 }

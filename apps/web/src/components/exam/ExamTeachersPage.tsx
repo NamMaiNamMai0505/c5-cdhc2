@@ -29,7 +29,7 @@ import {
 } from '@/api/exam'
 import {
 	canManageTeachingAssignments,
-	canViewTeachingAssignments
+	canViewTeacherCatalog
 } from '@/lib/exam-roles'
 import { canSeeUsernames, isSuperAdmin } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -104,7 +104,7 @@ function importValue(row: Record<string, unknown>, names: string[]) {
 
 export default function ExamTeachersPage() {
 	const qc = useQueryClient()
-	const canView = canViewTeachingAssignments()
+	const canView = canViewTeacherCatalog()
 	const canManage = canManageTeachingAssignments()
 
 	const [filterFac, setFilterFac] = useState<string>('all')
@@ -322,14 +322,26 @@ export default function ExamTeachersPage() {
 						item.name.trim().toLowerCase() ===
 							facultyRaw.toLowerCase()
 				)
-				const title = titles.find(
-					(item) =>
-						item.name.trim().toLowerCase() ===
-						titleRaw.toLowerCase()
-				)
+				const title = titleRaw
+					? titles.find(
+							(item) =>
+								item.name.trim().toLowerCase() ===
+								titleRaw.toLowerCase()
+						)
+					: titles.find(
+							(item) =>
+								item.name.trim().toLowerCase() === 'giảng viên'
+						)
 				if (!name || !faculty || !title) {
 					errors.push(
-						`Dòng ${index + 2}: thiếu họ tên, khoa hoặc chức danh hợp lệ`
+						`Dòng ${index + 2}: thiếu/không khớp ${[
+							!name && 'Họ tên',
+							!faculty && `Mã khoa ${facultyRaw || '(trống)'}`,
+							!title &&
+								`Chức danh ${titleRaw || '(cần có chức danh Giảng viên)'}`
+						]
+							.filter(Boolean)
+							.join(', ')}`
 					)
 					continue
 				}

@@ -218,16 +218,31 @@ export default function ExamClassesPage() {
 		try {
 			const rows = await parseCatalogImportFile(file, 'Lop')
 			if (!rows.length) throw new Error('File không có dòng dữ liệu')
+			const firstRow = rows[0]!
+			const officialCatalog = Boolean(
+				importValue(firstRow, ['mã số', 'ma so']) &&
+					importValue(firstRow, ['lên lớp', 'len lop']) &&
+					importValue(firstRow, [
+						'mã ngành nội bộ',
+						'ma nganh noi bo'
+					])
+			)
 			let saved = 0
 			const errors: string[] = []
 			for (let index = 0; index < rows.length; index++) {
 				const row = rows[index]!
 				const code = importValue(row, [
+					...(officialCatalog ? ['mã số', 'ma so'] : []),
 					'mã lớp',
 					'ma lop',
 					'code'
 				]).toUpperCase()
-				const name = importValue(row, ['tên lớp', 'ten lop', 'name'])
+				const name = importValue(row, [
+					...(officialCatalog ? ['lên lớp', 'len lop'] : []),
+					'tên lớp',
+					'ten lop',
+					'name'
+				])
 				const systemRaw = importValue(row, [
 					'mã hệ',
 					'ma he',
@@ -238,8 +253,13 @@ export default function ExamClassesPage() {
 					'system'
 				])
 				const majorRaw = importValue(row, [
+					...(officialCatalog
+						? ['mã ngành nội bộ', 'ma nganh noi bo']
+						: []),
 					'mã ngành',
 					'ma nganh',
+					'mã ngành đào tạo',
+					'ma nganh dao tao',
 					'ngành đào tạo',
 					'nganh dao tao',
 					'ngành',
@@ -287,29 +307,55 @@ export default function ExamClassesPage() {
 					'nien khoa',
 					'cohort'
 				])
-				const major = majors.find((item) =>
-					[
-						item.catalogNumber,
-						item.nationalMajorCode,
-						item.code,
-						item.name
-					].some((value) => matchesImportLabel(value, majorRaw))
-				)
 				const system = systems.find(
 					(item) =>
 						matchesImportLabel(item.code, systemRaw) ||
-						matchesImportLabel(item.name, systemRaw)
+						matchesImportLabel(item.letter, systemRaw) ||
+						(importKey(systemRaw).includes('hedansu') &&
+							item.letter.toUpperCase() === 'B') ||
+						(importKey(systemRaw).includes('hequansu') &&
+							item.letter.toUpperCase() === 'A')
 				)
+				const majorByCode = majors.find(
+					(item) =>
+						(!system || item.systemId === system.id) &&
+						[
+							item.catalogNumber,
+							item.nationalMajorCode,
+							item.code,
+							item.name
+						].some((value) => matchesImportLabel(value, majorRaw))
+				)
+				const nameTokens =
+					importKey(name)
+						.split(/(?=[0-9])/)[0]
+						.match(/[a-z]{3,}/g) || []
+				const majorByClassName = majors
+					.filter((item) => !system || item.systemId === system.id)
+					.map((item) => ({
+						item,
+						score: (
+							importKey(item.name).match(/[a-z]{3,}/g) || []
+						).filter((token) => nameTokens.includes(token)).length
+					}))
+					.filter((entry) => entry.score >= 2)
+					.sort((a, b) => b.score - a.score)[0]?.item
+				const major = majorByCode || majorByClassName
+				const cleanMonth = (value: string) =>
+					value.replace(/[^0-9]/g, '').slice(0, 2)
 				const start = startRaw
 					? parseCohortToMonths(startRaw).start
 					: startMonth && startYear
-						? parseCohortToMonths(`${startMonth}/${startYear}`)
-								.start
+						? parseCohortToMonths(
+								`${cleanMonth(startMonth)}/${startYear}`
+							).start
 						: ''
 				const end = endRaw
 					? parseCohortToMonths(endRaw).end
 					: endMonth && endYear
-						? parseCohortToMonths(`${endMonth}/${endYear}`).end
+						? parseCohortToMonths(
+								`${cleanMonth(endMonth)}/${endYear}`
+							).end
 						: ''
 				const cohort = cohortRaw
 					? (() => {
@@ -317,12 +363,19 @@ export default function ExamClassesPage() {
 							return formatCohort(parsed.start, parsed.end)
 						})()
 					: formatCohort(start, end)
-				if (!code || !name || !major || !cohort) {
+				if (
+					!code ||
+					!name ||
+					!major ||
+					(!officialCatalog && !cohort) ||
+					!systemRaw
+				) {
 					const missing = [
 						!code && 'Mã lớp',
 						!name && 'Tên lớp',
 						!major && `Ngành (${majorRaw || 'trống'})`,
-						!cohort && 'Niên khóa'
+						!systemRaw && 'Mã hệ',
+						!officialCatalog && !cohort && 'Niên khóa'
 					]
 						.filter(Boolean)
 						.join(', ')
@@ -342,7 +395,7 @@ export default function ExamClassesPage() {
 							code,
 							name,
 							majorId: major.id,
-							cohort,
+							...(cohort ? { cohort } : {}),
 							description:
 								importValue(row, [
 									'mô tả',
@@ -357,7 +410,7 @@ export default function ExamClassesPage() {
 							code,
 							name,
 							majorId: major.id,
-							cohort,
+							...(cohort ? { cohort } : {}),
 							description:
 								importValue(row, [
 									'mô tả',
@@ -683,8 +736,8 @@ export default function ExamClassesPage() {
 						<Table>
 							<TableHeader>
 								<TableRow>
-									<TableHead>Hệ đào tạo</TableHead>
-									<TableHead>Ngành đào tạo</TableHead>
+									<TableHead>Mã hệ</TableHead>
+									<TableHead>Mã ngành</TableHead>
 									<TableHead>Tên lớp</TableHead>
 									<TableHead>Mã lớp</TableHead>
 									<TableHead>Khóa</TableHead>
@@ -709,10 +762,22 @@ export default function ExamClassesPage() {
 											}
 										>
 											<TableCell>
-												{c.systemName || '—'}
+												<div className='font-mono'>
+													{c.systemCode || '—'}
+												</div>
+												<div className='text-muted-foreground text-xs'>
+													{c.systemName || ''}
+												</div>
 											</TableCell>
 											<TableCell>
-												{c.majorName || '—'}
+												<div className='font-mono'>
+													{c.nationalMajorCode ||
+														c.majorCode ||
+														'—'}
+												</div>
+												<div className='text-muted-foreground text-xs'>
+													{c.majorName || ''}
+												</div>
 											</TableCell>
 											<TableCell className='font-medium'>
 												{c.name}

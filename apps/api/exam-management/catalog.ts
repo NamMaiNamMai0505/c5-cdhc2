@@ -27,10 +27,8 @@ import {
 	getClassCohortStatus,
 	getDeptHeadFacultyCodes,
 	getDeptHeadMajorIds,
-	getLecturerFacultyCodes,
 	isBgh,
 	isExamOffice,
-	isLecturer,
 	isScopedDeptHead,
 	type ExamClassLifecycleStatus
 } from './helpers'
@@ -92,6 +90,7 @@ export interface ClassCatalogResponse {
 	majorIds?: number[]
 	majorCode?: string | null
 	majorName?: string | null
+	nationalMajorCode?: string | null
 	facultyId: number | null
 	facultyCode?: string | null
 	facultyName?: string | null
@@ -208,29 +207,8 @@ async function getSystem(id: number): Promise<LegacySystemRow | null> {
 export const ListExamSystems = api(
 	{ auth: true, expose: true, method: 'GET', path: '/exam/systems' },
 	async (q: { q?: Query<string> }): Promise<{ data: SystemResponse[] }> => {
-		const actor = await getActor()
 		const kw = (q.q || '').trim()
-		let rows = await listSystems(kw)
-		if (isLecturer(actor) && !canManageCatalogApi(actor)) {
-			const assigned = await orm
-				.selectDistinct({ systemId: examMajors.systemId })
-				.from(examTeachingAssignments)
-				.leftJoin(
-					examSubjects,
-					eq(examTeachingAssignments.subjectId, examSubjects.id)
-				)
-				.leftJoin(
-					examClasses,
-					eq(examTeachingAssignments.classId, examClasses.id)
-				)
-				.innerJoin(
-					examMajors,
-					sql`${examMajors.id} = coalesce(${examSubjects.majorId}, ${examClasses.majorId})`
-				)
-				.where(eq(examTeachingAssignments.userId, actor.userId))
-			const ids = new Set(assigned.map((r) => r.systemId))
-			rows = rows.filter((r) => ids.has(r.id))
-		}
+		const rows = await listSystems(kw)
 		return {
 			data: rows.map((r) => ({
 				id: r.id,
@@ -476,18 +454,6 @@ export const ListExamMajors = api(
 		const conditions = []
 		if (q.systemId)
 			conditions.push(eq(examMajors.systemId, Number(q.systemId)))
-		if (isLecturer(actor) && !canManageCatalogApi(actor)) {
-			conditions.push(
-				sql`EXISTS (
-					SELECT 1
-					FROM exam_teaching_assignments eta
-					LEFT JOIN exam_subjects es ON es.id = eta.subject_id
-					LEFT JOIN exam_classes ec ON ec.id = eta.class_id
-					WHERE eta.user_id = ${actor.userId}
-					  AND coalesce(es.major_id, ec.major_id) = ${examMajors.id}
-				)`
-			)
-		}
 		const kw = (q.q || '').trim()
 		if (kw) {
 			conditions.push(
@@ -739,16 +705,6 @@ export const ListExamFaculties = api(
 	}): Promise<{ data: FacultyResponse[] }> => {
 		const actor = await getActor()
 		const conditions = []
-		const lecturerFaculties = await getLecturerFacultyCodes(actor)
-		if (lecturerFaculties !== null) {
-			if (!lecturerFaculties.length) return { data: [] }
-			conditions.push(
-				sql`upper(${examFaculties.code}) in (${sql.join(
-					lecturerFaculties.map((code) => sql`${code}`),
-					sql`, `
-				)})`
-			)
-		}
 		const kw = (q.q || '').trim()
 		if (kw) {
 			conditions.push(
@@ -932,6 +888,7 @@ async function fetchClassJoined(
 			description: examClasses.description,
 			majorCode: examMajors.code,
 			majorName: examMajors.name,
+			nationalMajorCode: examMajors.nationalMajorCode,
 			systemId: examMajors.systemId,
 			systemCode: examSystems.code,
 			systemName: examSystems.name,
@@ -958,6 +915,7 @@ async function fetchClassJoined(
 		majorId: joined.majorId ?? null,
 		majorCode: joined.majorCode ?? null,
 		majorName: joined.majorName ?? null,
+		nationalMajorCode: joined.nationalMajorCode ?? null,
 		facultyId: joined.facultyId ?? null,
 		facultyCode: joined.facultyCode ?? null,
 		facultyName: joined.facultyName ?? null,
@@ -981,36 +939,6 @@ export const ListExamClasses = api(
 	}): Promise<{ data: ClassCatalogResponse[] }> => {
 		const actor = await getActor()
 		const conditions = []
-		const lecturerFaculties = await getLecturerFacultyCodes(actor)
-		if (lecturerFaculties !== null) {
-			if (!lecturerFaculties.length) return { data: [] }
-			conditions.push(
-				sql`EXISTS (
-					SELECT 1
-					FROM exam_major_subjects ems
-					INNER JOIN exam_subjects es ON es.id = ems.subject_id
-					INNER JOIN exam_faculties ef ON ef.id = es.faculty_id
-					WHERE ems.major_id = ${examClasses.majorId}
-					  AND upper(ef.code) in (${sql.join(
-							lecturerFaculties.map((code) => sql`${code}`),
-							sql`, `
-						)})
-				)`
-			)
-		}
-		// Giảng viên chỉ được nhìn thấy đúng các lớp đã được phân công cho
-		// chính mình. Lọc theo khoa ở trên chỉ là lớp bảo vệ bổ sung, không
-		// thay thế được phạm vi phân công môn + lớp.
-		if (isLecturer(actor) && !canManageCatalogApi(actor)) {
-			conditions.push(
-				sql`EXISTS (
-					SELECT 1
-					FROM exam_teaching_assignments eta
-					WHERE eta.class_id = ${examClasses.id}
-					  AND eta.user_id = ${actor.userId}
-				)`
-			)
-		}
 		if (q.systemId)
 			conditions.push(eq(examMajors.systemId, Number(q.systemId)))
 		if (q.majorId)
@@ -1054,6 +982,7 @@ export const ListExamClasses = api(
 				description: examClasses.description,
 				majorCode: examMajors.code,
 				majorName: examMajors.name,
+				nationalMajorCode: examMajors.nationalMajorCode,
 				systemId: examMajors.systemId,
 				systemCode: examSystems.code,
 				systemName: examSystems.name,
@@ -1151,7 +1080,11 @@ export const CreateExamClass = api(
 			throw APIError.alreadyExists(`Mã lớp ${code} đã tồn tại`)
 		}
 
-		const cohort = assertCohortHasMonthYear(body.cohort)
+		// The official class catalog may omit cohort dates. Such classes remain
+		// active until dates are added later through the edit form.
+		const cohort = body.cohort
+			? assertCohortHasMonthYear(body.cohort)
+			: null
 
 		const [row] = await orm
 			.insert(examClasses)
@@ -1281,21 +1214,6 @@ export const ListExamSubjects = api(
 	}): Promise<{ data: SubjectResponse[] }> => {
 		const actor = await getActor()
 		const conditions = []
-		const lecturerFaculties = await getLecturerFacultyCodes(actor)
-		if (lecturerFaculties !== null) {
-			if (!lecturerFaculties.length) return { data: [] }
-			conditions.push(
-				sql`EXISTS (
-					SELECT 1 FROM exam_subjects es
-					INNER JOIN exam_faculties ef ON ef.id = es.faculty_id
-					WHERE es.id = ${examSubjects.id}
-					  AND upper(ef.code) in (${sql.join(
-							lecturerFaculties.map((code) => sql`${code}`),
-							sql`, `
-						)})
-				)`
-			)
-		}
 		if (q.majorId) {
 			const majorId = Number(q.majorId)
 			conditions.push(
@@ -1319,12 +1237,7 @@ export const ListExamSubjects = api(
 			)
 		}
 
-		const wantMine =
-			q.mine === true ||
-			String(q.mine) === 'true' ||
-			(!actor.isSuperAdmin &&
-				isLecturer(actor) &&
-				!canManageCatalog(actor))
+		const wantMine = q.mine === true || String(q.mine) === 'true'
 
 		if (wantMine) {
 			const assigns = await orm
@@ -1373,6 +1286,7 @@ export const ListExamSubjects = api(
 				updatedAt: examSubjects.updatedAt,
 				code: examSubjects.code,
 				baseCode: examSubjects.baseCode,
+				shortCode: examSubjects.shortCode,
 				name: examSubjects.name,
 				creditHours: examSubjects.creditHours,
 				lessonHours: examSubjects.lessonHours,
@@ -1420,6 +1334,7 @@ export const ListExamSubjects = api(
 				updatedAt: r.updatedAt,
 				code: r.code,
 				baseCode: r.baseCode ?? null,
+				shortCode: r.shortCode ?? null,
 				name: r.name,
 				creditHours: r.creditHours,
 				lessonHours: r.lessonHours,
@@ -1430,6 +1345,7 @@ export const ListExamSubjects = api(
 				majorIds: majorIdsBySubject.get(r.id) || [],
 				majorCode: r.majorCode ?? null,
 				majorName: r.majorName ?? null,
+				nationalMajorCode: r.nationalMajorCode ?? null,
 				systemId: r.systemId ?? null,
 				systemCode: r.systemCode ?? null,
 				systemName: r.systemName ?? null,
@@ -1447,6 +1363,7 @@ export const CreateExamSubject = api(
 		majorId?: number
 		sourceSubjectId?: number
 		baseCode?: string
+		shortCode?: string
 		code?: string
 		creditHours?: number
 		lessonHours?: number
@@ -1523,6 +1440,7 @@ export const CreateExamSubject = api(
 					updatedAt: selectedSubject.updatedAt,
 					code: selectedSubject.code,
 					baseCode: selectedSubject.baseCode ?? null,
+					shortCode: selectedSubject.shortCode ?? null,
 					name: selectedSubject.name,
 					creditHours: selectedSubject.creditHours,
 					lessonHours: selectedSubject.lessonHours,
@@ -1560,6 +1478,7 @@ export const CreateExamSubject = api(
 				baseCode: baseCode.includes('_')
 					? baseCode.split('_').pop()!
 					: baseCode,
+				shortCode: body.shortCode?.trim().toUpperCase() || null,
 				name,
 				creditHours:
 					(sourceSubject as any)?.creditHours ??
@@ -1588,6 +1507,7 @@ export const CreateExamSubject = api(
 				updatedAt: row!.updatedAt,
 				code: row!.code,
 				baseCode: row!.baseCode ?? null,
+				shortCode: row!.shortCode ?? null,
 				name: row!.name,
 				creditHours: row!.creditHours,
 				lessonHours: row!.lessonHours,
@@ -1611,6 +1531,7 @@ export const UpdateExamSubject = api(
 		facultyId?: number
 		majorId?: number
 		baseCode?: string
+		shortCode?: string
 		code?: string
 		creditHours?: number
 		lessonHours?: number
@@ -1712,6 +1633,10 @@ export const UpdateExamSubject = api(
 				name,
 				code: fullCode,
 				baseCode,
+				shortCode:
+					params.shortCode !== undefined
+						? params.shortCode?.trim().toUpperCase() || null
+						: existing.shortCode,
 				facultyId,
 				majorId,
 				creditHours:
@@ -1743,6 +1668,7 @@ export const UpdateExamSubject = api(
 				updatedAt: row!.updatedAt,
 				code: row!.code,
 				baseCode: row!.baseCode ?? null,
+				shortCode: row!.shortCode ?? null,
 				name: row!.name,
 				creditHours: row!.creditHours,
 				lessonHours: row!.lessonHours,
