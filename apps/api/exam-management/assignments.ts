@@ -720,6 +720,8 @@ export const CreateExamAssignment = api(
 	{ auth: true, expose: true, method: 'POST', path: '/exam/assignments' },
 	async (body: {
 		subjectId: number
+		/** Backend cũ yêu cầu ngành là dữ liệu bắt buộc của phân công. */
+		majorId: number
 		userId: number
 		/** Bắt buộc — phân công theo lớp */
 		classId: number
@@ -762,13 +764,13 @@ export const CreateExamAssignment = api(
 			.where(eq(examSubjects.id, body.subjectId))
 			.limit(1)
 		if (!subj) throw APIError.notFound('Môn học không tồn tại')
-		const cls = await resolveClassForMajor(body.classId, subj.majorId)
+		const cls = await resolveClassForMajor(body.classId, body.majorId)
 		const [majorSubjectLink] = await orm
 			.select({ subjectId: examMajorSubjects.subjectId })
 			.from(examMajorSubjects)
 			.where(
 				and(
-					eq(examMajorSubjects.majorId, cls.majorId),
+					eq(examMajorSubjects.majorId, body.majorId),
 					eq(examMajorSubjects.subjectId, subj.id)
 				)
 			)
@@ -919,6 +921,8 @@ export const UpdateExamAssignment = api(
 	async (params: {
 		id: number
 		subjectId?: number
+		/** Backend cũ yêu cầu ngành là dữ liệu bắt buộc của phân công. */
+		majorId: number
 		userId?: number
 		classId?: number | null
 		teachingStart?: string | null
@@ -1037,7 +1041,22 @@ export const UpdateExamAssignment = api(
 		if (!u) throw APIError.notFound('Giáo viên không tồn tại')
 
 		await assertTeacherMatchesFaculty(userId, subj.facultyCode)
-		const cls = await resolveClassForMajor(classId, subj.majorId)
+		const cls = await resolveClassForMajor(classId, params.majorId)
+		const [majorSubjectLink] = await orm
+			.select({ subjectId: examMajorSubjects.subjectId })
+			.from(examMajorSubjects)
+			.where(
+				and(
+					eq(examMajorSubjects.majorId, params.majorId),
+					eq(examMajorSubjects.subjectId, subj.id)
+				)
+			)
+			.limit(1)
+		if (!majorSubjectLink) {
+			throw APIError.failedPrecondition(
+				'Môn chưa được gắn vào ngành của lớp — không cập nhật được'
+			)
+		}
 
 		const [dup] = await orm
 			.select({ id: examTeachingAssignments.id })

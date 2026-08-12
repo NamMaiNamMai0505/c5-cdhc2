@@ -335,8 +335,16 @@ export default function ExamAssignmentPage() {
 					continue
 				}
 				try {
+					const majorId = cls.majorId ?? subject.majorId
+					if (majorId == null) {
+						errors.push(
+							`Dòng ${index + 2}: không xác định được mã ngành cho lớp`
+						)
+						continue
+					}
 					await CreateExamAssignment({
 						subjectId: subject.id,
+						majorId,
 						userId: teacher.id,
 						classId: cls.id,
 						teachingStart:
@@ -828,6 +836,7 @@ export default function ExamAssignmentPage() {
 			if (err) throw new Error(err)
 			const payload = {
 				subjectId: Number(form.subjectId),
+				majorId: Number(form.majorId),
 				userId: Number(form.userId),
 				classId: Number(form.classId),
 				teachingStart: form.teachingStart.trim() || null,
