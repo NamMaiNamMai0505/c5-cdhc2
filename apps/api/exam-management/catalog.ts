@@ -111,6 +111,7 @@ export interface SubjectResponse {
 	updatedAt: string
 	code: string
 	baseCode: string | null
+	shortCode: string | null
 	name: string
 	creditHours: number | null
 	lessonHours: number | null
@@ -120,6 +121,7 @@ export interface SubjectResponse {
 	majorId: number | null
 	majorCode?: string | null
 	majorName?: string | null
+	nationalMajorCode?: string | null
 	/** Hệ đào tạo (QS/DS) — để UI cố định khi GV import */
 	systemId?: number | null
 	systemCode?: string | null
@@ -1284,6 +1286,7 @@ export const ListExamSubjects = api(
 				facultyName: examFaculties.name,
 				majorCode: examMajors.code,
 				majorName: examMajors.name,
+				nationalMajorCode: examMajors.nationalMajorCode,
 				systemId: examMajors.systemId,
 				systemCode: examSystems.code,
 				systemName: examSystems.name
