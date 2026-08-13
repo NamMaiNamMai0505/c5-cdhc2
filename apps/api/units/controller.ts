@@ -28,13 +28,38 @@ class controller {
 
 		const validParams: UnitParams[] = []
 		for (const param of params) {
-			const parent = await this.repo.getOne({ id: param.parentId! })
-			const parentLevel = UnitLevel.fromName(parent!.level)
 			const paramLevel = UnitLevel.fromName(param.level)
+			const parentId =
+				param.parentId != null && Number(param.parentId) > 0
+					? Number(param.parentId)
+					: null
+
+			// Tiểu đoàn (battalion) có thể không có parent
+			if (parentId == null) {
+				if (param.level !== 'battalion') {
+					throw AppError.handleAppErr(
+						AppError.invalidArgument(
+							'Đại đội / đơn vị cấp dưới phải chọn đơn vị cha (tiểu đoàn)'
+						)
+					)
+				}
+				validParams.push({ ...param, parentId: null })
+				continue
+			}
+
+			const parent = await this.repo.getOne({ id: parentId })
+			if (!parent) {
+				throw AppError.handleAppErr(
+					AppError.invalidArgument(
+						`Không tìm thấy đơn vị cha id=${parentId}`
+					)
+				)
+			}
+			const parentLevel = UnitLevel.fromName(parent.level)
 			if (UnitLevel.isEqual(parentLevel, paramLevel)) {
 				throw AppError.handleAppErr(
 					AppError.invalidArgument(
-						`parent level and unit level can't be the same. Parent level:${parent?.level} - Unit level: ${param.level}`
+						`parent level and unit level can't be the same. Parent level:${parent.level} - Unit level: ${param.level}`
 					)
 				)
 			}
@@ -42,12 +67,12 @@ class controller {
 			if (UnitLevel.isLargerThan(paramLevel, parentLevel)) {
 				throw AppError.handleAppErr(
 					AppError.invalidArgument(
-						`unit level can't be higher than parent. Parent level: ${parent?.level} - Unit level: ${param.level}`
+						`unit level can't be higher than parent. Parent level: ${parent.level} - Unit level: ${param.level}`
 					)
 				)
 			}
 
-			validParams.push(param)
+			validParams.push({ ...param, parentId })
 		}
 
 		const isValidParamsEmpty = validParams.length === 0
@@ -58,6 +83,45 @@ class controller {
 		}
 
 		return this.repo.create(validParams).catch(AppError.handleAppErr)
+	}
+
+	async update(id: number, params: Partial<UnitParams>): Promise<UnitDB> {
+		const existing = await this.repo.findById(id)
+		if (!existing)
+			throw AppError.handleAppErr(
+				AppError.notFound('Đơn vị không tồn tại')
+			)
+		if (params.alias !== undefined && !params.alias.trim())
+			throw AppError.handleAppErr(
+				AppError.invalidArgument('Alias không được để trống')
+			)
+		if (params.name !== undefined && !params.name.trim())
+			throw AppError.handleAppErr(
+				AppError.invalidArgument('Tên không được để trống')
+			)
+		const rows = await this.repo.update(id, params)
+		return rows[0]!
+	}
+
+	async delete(id: number): Promise<void> {
+		const existing = await this.repo.findById(id)
+		if (!existing)
+			throw AppError.handleAppErr(
+				AppError.notFound('Đơn vị không tồn tại')
+			)
+		const full = (
+			(await this.repo.find({ ids: [id] })) as unknown as Array<{
+				children?: unknown[]
+				classes?: unknown[]
+			}>
+		)[0]
+		if (full?.children?.length || full?.classes?.length)
+			throw AppError.handleAppErr(
+				AppError.invalidArgument(
+					'Không thể xóa đơn vị đang có đơn vị con hoặc lớp'
+				)
+			)
+		await this.repo.delete([existing as InteralUnitDB])
 	}
 
 	find(q: GetUnitsQuery, unitIds: number[]): Promise<Unit[]> {

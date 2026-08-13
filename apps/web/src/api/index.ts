@@ -23,7 +23,12 @@ import {
 	type GetUserRolesResponse
 } from '@/types'
 import { appFetcher } from '@/lib/axios'
-import Client, { auth, classes, students, units } from './client'
+import Client, {
+	type auth,
+	type classes,
+	type students,
+	type units
+} from './client'
 import { ApiUrl } from '@/lib/const'
 
 export const requestClient = new Client(ApiUrl, {
@@ -34,6 +39,18 @@ export const requestClient = new Client(ApiUrl, {
 
 export function CreateClass(body: ClassBody) {
 	return requestClient.classes.CreateClass(body).then((resp) => resp.data)
+}
+
+export function ListMoodleCourses(unitId?: number) {
+	return requestClient.classes.ListMoodleCourses({ unitId })
+}
+
+export function ImportMoodleClasses(unitId: number, courseIds: number[]) {
+	return requestClient.classes.ImportMoodleClasses({ unitId, courseIds })
+}
+
+export function MoodleDbStatus() {
+	return requestClient.classes.MoodleDbStatus()
 }
 
 export function DeleteClasses(ids: number[]) {
@@ -107,6 +124,10 @@ export function MarkAsRead(params: MarkAsReadNotificationParams) {
 	return requestClient.notifications.MarkAsRead(params)
 }
 
+export function MarkAllAsRead() {
+	return requestClient.notifications.MarkAllAsRead()
+}
+
 export function GetStudentByLevel(level: UnitLevel): Promise<Unit[]> {
 	return requestClient.students
 		.GetStudents({ unitLevel: level })
@@ -122,6 +143,67 @@ export function GetUnit({
 	...params
 }: units.GetUnitRequest & { alias: string }) {
 	return requestClient.units.GetUnit(alias, params).then((resp) => resp.data)
+}
+
+export type CreateUnitBody = {
+	alias: string
+	name: string
+	level: 'battalion' | 'company'
+	parentId?: number | null
+}
+
+/** Thêm đơn vị (dùng cho «Đơn vị sử dụng» / holding unit) */
+export async function CreateUnit(
+	data: CreateUnitBody | CreateUnitBody[]
+): Promise<units.UnitDB[]> {
+	const list = Array.isArray(data) ? data : [data]
+	const { appFetcher } = await import('@/lib/axios')
+	const { ApiUrl } = await import('@/lib/const')
+	const url = `${ApiUrl.replace(/\/$/, '')}/units`
+	const resp = await appFetcher(url, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ data: list })
+	})
+	if (!resp.ok) {
+		let message = `HTTP ${resp.status}`
+		try {
+			const body = await resp.json()
+			message =
+				body?.message ||
+				body?.error ||
+				body?.internal_message ||
+				message
+		} catch {
+			/* ignore */
+		}
+		throw new Error(message)
+	}
+	const json = (await resp.json()) as { data: units.UnitDB[] }
+	return json.data
+}
+
+export async function UpdateUnit(id: number, body: Partial<CreateUnitBody>) {
+	const { appFetcher } = await import('@/lib/axios')
+	const { ApiUrl } = await import('@/lib/const')
+	const resp = await appFetcher(`${ApiUrl.replace(/\/$/, '')}/units/${id}`, {
+		method: 'PATCH',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(body)
+	})
+	if (!resp.ok)
+		throw new Error((await resp.json()).message || `HTTP ${resp.status}`)
+	return ((await resp.json()) as { data: units.UnitDB }).data
+}
+
+export async function DeleteUnit(id: number) {
+	const { appFetcher } = await import('@/lib/axios')
+	const { ApiUrl } = await import('@/lib/const')
+	const resp = await appFetcher(`${ApiUrl.replace(/\/$/, '')}/units/${id}`, {
+		method: 'DELETE'
+	})
+	if (!resp.ok)
+		throw new Error((await resp.json()).message || `HTTP ${resp.status}`)
 }
 
 export function GetUnreadNotificationsCount(): Promise<number> {
@@ -172,6 +254,68 @@ export function GetUserInfo() {
 	return requestClient.auth.GetUserInfo().then((resp) => resp.data)
 }
 
+/** Upload chữ ký số của chính mình (CNK / BGH / GV) — không cần users:update */
+export async function UpdateMySignature(signatureUrl: string) {
+	const { appFetcher } = await import('@/lib/axios')
+	const { ApiUrl } = await import('@/lib/const')
+	const url = `${ApiUrl.replace(/\/$/, '')}/authn/my-signature`
+	const resp = await appFetcher(url, {
+		method: 'PATCH',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ signatureUrl })
+	})
+	if (!resp.ok) {
+		let message = `HTTP ${resp.status}`
+		try {
+			const body = await resp.json()
+			message =
+				body?.message ||
+				body?.error ||
+				body?.internal_message ||
+				message
+		} catch {
+			/* ignore */
+		}
+		throw new Error(message)
+	}
+	return resp.json() as Promise<{ ok: boolean; signatureUrl: string }>
+}
+
+/** Cập nhật hồ sơ chính mình — không cần users:update. Chức vụ không đổi. */
+export async function UpdateMyProfile(body: {
+	displayName?: string
+	rank?: string
+}) {
+	const { appFetcher } = await import('@/lib/axios')
+	const { ApiUrl } = await import('@/lib/const')
+	const url = `${ApiUrl.replace(/\/$/, '')}/authn/my-profile`
+	const resp = await appFetcher(url, {
+		method: 'PATCH',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(body)
+	})
+	if (!resp.ok) {
+		let message = `HTTP ${resp.status}`
+		try {
+			const data = await resp.json()
+			message =
+				data?.message ||
+				data?.error ||
+				data?.internal_message ||
+				message
+		} catch {
+			/* ignore */
+		}
+		throw new Error(message)
+	}
+	return resp.json() as Promise<{
+		ok: boolean
+		displayName: string
+		rank: string | null
+		position: string | null
+	}>
+}
+
 export function ChangePassword(params: {
 	prevPassword: string
 	password: string
@@ -181,6 +325,32 @@ export function ChangePassword(params: {
 
 export function GetUsers() {
 	return requestClient.users.GetUsers().then((resp) => resp.data)
+}
+
+/** User chưa có vai trò / pending — badge đỏ chờ cấp quyền */
+export type PendingPermissionUser = {
+	userId: number
+	username: string
+	displayName: string
+	status: string | null
+	createdAt: string
+}
+
+export async function GetPendingPermissionUsers(): Promise<{
+	count: number
+	items: PendingPermissionUser[]
+}> {
+	const { appFetcher } = await import('@/lib/axios')
+	const { ApiUrl } = await import('@/lib/const')
+	const url = `${ApiUrl.replace(/\/$/, '')}/users/pending-permissions`
+	const resp = await appFetcher(url)
+	if (!resp.ok) {
+		throw new Error(`HTTP ${resp.status}`)
+	}
+	const body = (await resp.json()) as {
+		data: { count: number; items: PendingPermissionUser[] }
+	}
+	return body.data
 }
 
 export function UploadFiles(body: BodyInit) {
