@@ -70,9 +70,6 @@ export interface FacultyResponse {
 	code: string
 	shortCode: string | null
 	name: string
-	majorId: number | null
-	majorCode: string | null
-	majorName: string | null
 	description: string | null
 }
 
@@ -690,19 +687,13 @@ async function mapFaculty(
 		code: r.code,
 		shortCode: r.shortCode ?? null,
 		name: r.name,
-		majorId: null,
-		majorCode: null,
-		majorName: null,
 		description: r.description
 	}
 }
 
 export const ListExamFaculties = api(
 	{ auth: true, expose: true, method: 'GET', path: '/exam/faculties' },
-	async (q: {
-		q?: Query<string>
-		majorId?: Query<number>
-	}): Promise<{ data: FacultyResponse[] }> => {
+	async (q: { q?: Query<string> }): Promise<{ data: FacultyResponse[] }> => {
 		const actor = await getActor()
 		const conditions = []
 		const kw = (q.q || '').trim()
@@ -747,7 +738,6 @@ export const CreateExamFaculty = api(
 		code: string
 		shortCode?: string | null
 		name: string
-		majorId?: number | null
 		description?: string
 	}): Promise<{ data: FacultyResponse }> => {
 		const actor = await getActor()
@@ -774,7 +764,6 @@ export const CreateExamFaculty = api(
 				code,
 				shortCode,
 				name,
-				majorId: null,
 				description: body.description || null
 			})
 			.returning()
@@ -789,7 +778,6 @@ export const UpdateExamFaculty = api(
 		code?: string
 		shortCode?: string | null
 		name?: string
-		majorId?: number | null
 		description?: string | null
 	}): Promise<{ data: FacultyResponse }> => {
 		const actor = await getActor()
@@ -837,7 +825,6 @@ export const UpdateExamFaculty = api(
 			.set({
 				code,
 				shortCode,
-				majorId: null,
 				name,
 				description:
 					params.description !== undefined
